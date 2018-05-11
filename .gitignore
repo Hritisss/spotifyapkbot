@@ -1,0 +1,7 @@
+out
+spotifyapk.db
+build
+*.log
+.DS_Store
+.idea
+.gradle

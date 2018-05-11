@@ -1,0 +1,49 @@
+group 'ru.vasiliev.telegram.spotifyapkbot'
+version '1.1'
+
+buildscript {
+    ext.kotlin_version = '1.2.30'
+
+    repositories {
+        mavenCentral()
+        jcenter()
+    }
+    dependencies {
+        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
+        classpath 'com.github.jengelman.gradle.plugins:shadow:2.0.4'
+    }
+}
+
+apply plugin: 'kotlin'
+apply plugin: 'com.github.johnrengelman.shadow'
+apply from: 'dependencies.gradle'
+
+repositories {
+    mavenCentral()
+    maven {
+        url "https://dl.bintray.com/kotlin/exposed"
+    }
+}
+
+defaultTasks 'clean', 'build', 'shadowJar'
+
+jar {
+    manifest {
+        attributes 'Main-Class': 'ru.vasiliev.telegram.spotifyapkbot.core.MainKt'
+    }
+}
+
+dependencies {
+    compile "org.jetbrains.kotlin:kotlin-stdlib-jdk8:$kotlin_version"
+
+    SpotifyApkBotDependencies.each {
+        add(it.configuration, it.dependency)
+    }
+}
+
+compileKotlin {
+    kotlinOptions.jvmTarget = "1.8"
+}
+compileTestKotlin {
+    kotlinOptions.jvmTarget = "1.8"
+}

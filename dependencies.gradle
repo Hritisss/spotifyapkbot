@@ -1,0 +1,77 @@
+ext {
+    /** VERSIONS **/
+
+    versions = [
+            retrofit    : '2.4.0',
+            rxkotlin    : '2.2.0',
+            telegrambots: '3.5',
+            exposed     : '0.9.1',
+            sqlitejdbc  : '3.21.0.1',
+            fuel        : '1.12.1',
+            jodatime    : '2.9.9',
+            log4j       : '1.2.17'
+    ]
+
+    /** LIBRARIES **/
+
+    // RxJava2
+    rxjava2 = [
+            rxkotlin: "io.reactivex.rxjava2:rxkotlin:${versions.rxkotlin}", // compile
+    ]
+
+    // REST library
+    retrofit = [
+            retrofit                  : "com.squareup.retrofit2:retrofit:${versions.retrofit}", // compile
+            retrofitRxJavaAdapter     : "com.squareup.retrofit2:adapter-rxjava2:${versions.retrofit}", // compile
+            retrofitConverterSimpleXML: "com.squareup.retrofit2:converter-simplexml:${versions.retrofit}", // compile
+            retrofitConverterJAXB     : "com.squareup.retrofit2:converter-jaxb:${versions.retrofit}" // compile
+    ]
+
+    // Telegram Bots API
+    telegrambots = [
+            telegrambots: "org.telegram:telegrambots:${versions.telegrambots}", // compile
+    ]
+
+    // ORM
+    exposed = [
+            exposed   : "org.jetbrains.exposed:exposed:${versions.exposed}", // compile
+            sqlitejdbc: "org.xerial:sqlite-jdbc:${versions.sqlitejdbc}", // compile
+    ]
+
+    // Fuel (http)
+    fuel = [
+            fuel: "com.github.kittinunf.fuel:fuel:${versions.fuel}" // compile
+    ]
+
+    // Joda Time
+    jodatime = [
+            jodatime: "joda-time:joda-time:${versions.jodatime}" // compile
+    ]
+
+    // Log4J
+    log4j = [
+            log4j: "log4j:log4j:${versions.log4j}" // compile
+    ]
+
+    /** APPLICATION DEPENDENCIES **/
+
+    SpotifyApkBotDependencies = [
+            // RxJava2 Kotlin
+            [configuration: "compile", dependency: rxjava2.rxkotlin],
+            // Retrofit
+            [configuration: "compile", dependency: retrofit.retrofit],
+            [configuration: "compile", dependency: retrofit.retrofitRxJavaAdapter],
+            [configuration: "compile", dependency: retrofit.retrofitConverterSimpleXML],
+            // Telegram Bots API
+            [configuration: "compile", dependency: telegrambots.telegrambots],
+            // SQLite
+            [configuration: "compile", dependency: exposed.exposed],
+            [configuration: "compile", dependency: exposed.sqlitejdbc],
+            // Date & Time
+            [configuration: "compile", dependency: jodatime.jodatime],
+            // Logging
+            [configuration: "compile", dependency: log4j.log4j],
+            // Other
+            [configuration: "compile", dependency: "org.dom4j:dom4j:2.1.0"]
+    ]
+}
