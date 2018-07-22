@@ -13,6 +13,7 @@ import org.jetbrains.exposed.sql.statements.StatementContext
 import org.jetbrains.exposed.sql.statements.expandArgs
 import org.jetbrains.exposed.sql.transactions.TransactionManager
 import org.jetbrains.exposed.sql.transactions.transaction
+import ru.vasiliev.telegram.spotifyapkbot.model.Apk
 import java.sql.Connection
 
 
@@ -26,7 +27,8 @@ class DbUtils private constructor(private val log: Logger = Logger.getLogger(DbU
 
         transaction {
             logger.addLogger(SqlDebugLogger)
-            create(ApkReleases)
+            create(ApkRelease)
+            create(ApkBeta)
             create(Subscribers)
         }
     }
@@ -40,28 +42,50 @@ class DbUtils private constructor(private val log: Logger = Logger.getLogger(DbU
         const val LATEST_VERSION_ID = 1
     }
 
-    object ApkReleases : IntIdTable() {
+    object ApkRelease : IntIdTable() {
         val releaseId = integer("release_id").uniqueIndex()
-        val version = varchar("version", 128)
+        val title = varchar("title", 128)
         val pubDate = varchar("pub_date", 128)
+        val link = varchar("link", 1024)
+    }
+
+    object ApkBeta : IntIdTable() {
+        val betaId = integer("release_id").uniqueIndex()
+        val title = varchar("title", 128)
+        val pubDate = varchar("pub_date", 128)
+        val link = varchar("link", 1024)
     }
 
     object Subscribers : IntIdTable() {
         val chatId = long("chat_id")
+        val beta = bool("beta")
+        val release = bool("release")
     }
 
-    class ApkEntity(id: EntityID<Int>) : IntEntity(id) {
-        companion object : IntEntityClass<ApkEntity>(ApkReleases)
+    class ApkReleaseEntity(id: EntityID<Int>) : IntEntity(id) {
+        companion object : IntEntityClass<ApkReleaseEntity>(ApkRelease)
 
-        var releaseId by ApkReleases.releaseId
-        var version by ApkReleases.version
-        var pubDate by ApkReleases.pubDate
+        var releaseId by ApkRelease.releaseId
+        var title by ApkRelease.title
+        var pubDate by ApkRelease.pubDate
+        var link by ApkRelease.link
+    }
+
+    class ApkBetaEntity(id: EntityID<Int>) : IntEntity(id) {
+        companion object : IntEntityClass<ApkBetaEntity>(ApkBeta)
+
+        var betaId by ApkBeta.betaId
+        var title by ApkBeta.title
+        var pubDate by ApkBeta.pubDate
+        var link by ApkBeta.link
     }
 
     class SubEntity(id: EntityID<Int>) : IntEntity(id) {
         companion object : IntEntityClass<SubEntity>(Subscribers)
 
         var chatId by Subscribers.chatId
+        var beta by Subscribers.beta
+        var release by Subscribers.release
     }
 
     object SqlDebugLogger : SqlLogger {
@@ -71,23 +95,25 @@ class DbUtils private constructor(private val log: Logger = Logger.getLogger(DbU
         }
     }
 
-    fun saveLatestVersion(version: String?, pubDate: String?) {
-        if (version != null && pubDate != null) {
+    fun saveLatestRelease(release: Apk?) {
+        if (release != null) {
             transaction {
                 // Check if index already exist
-                val latest = ApkEntity.find { ApkReleases.releaseId.eq(LATEST_VERSION_ID) }
+                val latest = ApkReleaseEntity.find { ApkRelease.releaseId.eq(LATEST_VERSION_ID) }
                 if (latest.empty()) {
                     // Create if not exist
-                    ApkEntity.new {
+                    ApkReleaseEntity.new {
                         this.releaseId = LATEST_VERSION_ID
-                        this.version = version
-                        this.pubDate = pubDate
+                        this.title = release.title!!
+                        this.pubDate = release.pubDate!!
+                        this.link = release.link!!
                     }
                 } else { // Update
                     latest.forEach { entity ->
                         run {
-                            entity.version = version
-                            entity.pubDate = pubDate
+                            entity.title = release.title!!
+                            entity.pubDate = release.pubDate!!
+                            entity.link = release.link!!
                         }
                     }
                 }
@@ -95,12 +121,52 @@ class DbUtils private constructor(private val log: Logger = Logger.getLogger(DbU
         }
     }
 
-    fun readLatestVersion(): ApkEntity? {
-        var apk: ApkEntity? = null
-        transaction {
-            apk = ApkEntity.findById(1)
+    fun saveLatestBeta(beta: Apk?) {
+        if (beta != null) {
+            transaction {
+                // Check if index already exist
+                val latest = ApkBetaEntity.find { ApkBeta.betaId.eq(LATEST_VERSION_ID) }
+                if (latest.empty()) {
+                    // Create if not exist
+                    ApkBetaEntity.new {
+                        this.betaId = LATEST_VERSION_ID
+                        this.title = beta.title!!
+                        this.pubDate = beta.pubDate!!
+                        this.link = beta.link!!
+                    }
+                } else { // Update
+                    latest.forEach { entity ->
+                        run {
+                            entity.title = beta.title!!
+                            entity.pubDate = beta.pubDate!!
+                            entity.link = beta.link!!
+                        }
+                    }
+                }
+            }
         }
-        return apk
+    }
+
+    fun readLatestRelease(): Apk? {
+        var apk: ApkReleaseEntity? = null
+        transaction {
+            apk = ApkReleaseEntity.findById(1)
+        }
+        if (apk != null) {
+            return Apk(apk!!.title, apk!!.pubDate, apk!!.link)
+        }
+        return null
+    }
+
+    fun readLatestBeta(): Apk? {
+        var apk: ApkBetaEntity? = null
+        transaction {
+            apk = ApkBetaEntity.findById(1)
+        }
+        if (apk != null) {
+            return Apk(apk!!.title, apk!!.pubDate, apk!!.link)
+        }
+        return null
     }
 
     fun readAllSubscribers(): List<SubEntity>? {
@@ -111,18 +177,46 @@ class DbUtils private constructor(private val log: Logger = Logger.getLogger(DbU
         return subs
     }
 
-    fun addSubscriber(chatId: Long): Boolean {
-        var result = false
+    fun addReleaseSubscriber(chatId: Long): Boolean {
+        var subscribed = false
         transaction {
             val iter = SubEntity.find { Subscribers.chatId.eq(chatId) }
             if (!iter.empty()) {
-                result = false
+                var found = false
+                iter.forEach {
+                    if (!it.release) {
+                        it.release = true
+                        found = true
+                    }
+                }
+                subscribed = found
             } else {
-                SubEntity.new { this.chatId = chatId }
-                result = true
+                SubEntity.new { this.chatId = chatId; this.beta = false; this.release = true }
+                subscribed = true
             }
         }
-        return result
+        return subscribed
+    }
+
+    fun addBetaSubscriber(chatId: Long): Boolean {
+        var subscribed = false
+        transaction {
+            val iter = SubEntity.find { Subscribers.chatId.eq(chatId) }
+            if (!iter.empty()) {
+                var found = false
+                iter.forEach {
+                    if (!it.beta) {
+                        it.beta = true
+                        found = true
+                    }
+                }
+                subscribed = found
+            } else {
+                SubEntity.new { this.chatId = chatId; this.beta = true; this.release = false }
+                subscribed = true
+            }
+        }
+        return subscribed
     }
 
     fun removeSubscriber(chatId: Long): Boolean {
@@ -141,8 +235,17 @@ class DbUtils private constructor(private val log: Logger = Logger.getLogger(DbU
 
     fun dump() {
         transaction {
-            DbUtils.ApkEntity.all().forEach {
-                println("${it.version} - ${it.pubDate}")
+            print("Release APK: ")
+            DbUtils.ApkReleaseEntity.all().forEach {
+                println("${it.title} - ${it.pubDate}")
+            }
+            print("Beta APK: ")
+            DbUtils.ApkBetaEntity.all().forEach {
+                println("${it.title} - ${it.pubDate}")
+            }
+            println("Subscribers:")
+            DbUtils.SubEntity.all().forEach {
+                println("chatId: ${it.chatId}, beta: ${it.beta}, release: ${it.release}")
             }
         }
     }

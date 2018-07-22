@@ -1,5 +1,6 @@
 package ru.vasiliev.telegram.spotifyapkbot
 
+import io.reactivex.Observable
 import io.reactivex.Single
 import io.reactivex.rxkotlin.subscribeBy
 import io.reactivex.schedulers.Schedulers
@@ -39,7 +40,9 @@ class SpotifyApkBot : BaseBot() {
             if (message.hasText()) {
                 when {
                     message.text.startsWith(Command.APK) -> printLatestApk(message.chatId)
-                    message.text.startsWith(Command.SUB) -> sub(message.chatId)
+                    message.text.startsWith(Command.SUB_STATUS) -> printSubscriptionStatus(message.chatId)
+                    message.text.startsWith(Command.SUB_RELEASE) -> sub_release(message.chatId)
+                    message.text.startsWith(Command.SUB_BETA) -> sub_beta(message.chatId)
                     message.text.startsWith(Command.UNSUB) -> unsub(message.chatId)
                 }
             }
@@ -56,10 +59,9 @@ class SpotifyApkBot : BaseBot() {
         }.flatMap { doc -> Single.just(convertXml(doc)) }.subscribeBy(onError = {
             log.error("", it)
         }, onSuccess = {
-            val latest = getLatest(it.apkList)
-            if (latest != null) {
-                checkUpdateAvailableAndNotify(latest)
-            }
+            val relese = getLatestRelease(it.apkList)
+            val beta = getLatestBeta(it.apkList)
+            checkUpdateAvailableAndNotify(relese, beta)
         })
     }
 
@@ -70,53 +72,113 @@ class SpotifyApkBot : BaseBot() {
         }.flatMap { doc -> Single.just(convertXml(doc)) }.subscribeBy(onError = {
             sendMessage(createTextMessage(chatId, it.message))
         }, onSuccess = {
-            val latest = getLatest(it.apkList)
-            if (latest != null) {
-                log.debug("Latest: $latest")
-                checkUpdateAvailable(latest)
-                sendMessage(createTextMessage(chatId, "Последняя версия: ${latest.title}\n" +
+            val release = getLatestRelease(it.apkList)
+            val beta = getLatestBeta(it.apkList)
+            val storedRelease = db.readLatestRelease()
+            val storedBeta = db.readLatestBeta()
+            checkUpdateAvailable(release, beta)
+            if (release != null || storedRelease != null) {
+                val latest = release ?: storedRelease
+                log.debug("Latest release: $latest")
+                sendMessage(createTextMessage(chatId, "Последняя *release* версия: ${latest!!.title}\n" +
                         "Дата релиза: ${RssDateUtils.toHumanReadable(latest.pubDate)}\n" +
-                        latest.link.plus("download")))
+                        "`[`__[Скачать](${latest.link.plus("download")}" + ")__`]`"))
             } else {
-                sendMessage(createTextMessage(chatId, "Что-то пошло не так :["))
+                sendMessage(createTextMessage(chatId, "Последняя *release* версия: нет данных"))
+            }
+            if (beta != null || storedBeta != null) {
+                val latest = beta ?: storedBeta
+                log.debug("Latest release: $latest")
+                sendMessage(createTextMessage(chatId, "Последняя *beta* версия: ${latest!!.title}\n" +
+                        "Дата релиза: ${RssDateUtils.toHumanReadable(latest.pubDate)}\n" +
+                        "`[`__[Скачать](${latest.link.plus("download")}" + ")__`]`"))
+            } else {
+                sendMessage(createTextMessage(chatId, "Последняя *beta* версия: нет данных"))
             }
         })
     }
 
-    private fun sub(chatId: Long) {
-        log.debug("sub($chatId)")
-        if (db.addSubscriber(chatId)) {
-            sendMessage(createTextMessage(chatId, "Уведомления об обновлениях включены"))
+    private fun printSubscriptionStatus(chatId: Long) {
+        val subs = db.readAllSubscribers()
+        var subscriber: DbUtils.SubEntity? = null
+        if (subs != null && !subs.isEmpty()) {
+            subs.forEach { sub ->
+                if (subscriber == null && sub.chatId == chatId) {
+                    subscriber = sub
+                }
+            }
+        }
+        if (subscriber != null) {
+            sendMessage(createTextMessage(chatId, "Статус подписки:\n" +
+                    "*release* версии: _${subscriber!!.release}_\n" +
+                    "*beta* версии: _${subscriber!!.beta}_"))
+        } else {
+            sendMessage(createTextMessage(chatId, "Вы не подписаны на уведомления"))
+        }
+    }
+
+    private fun sub_release(chatId: Long) {
+        log.debug("sub_release($chatId)")
+        if (db.addReleaseSubscriber(chatId)) {
+            sendMessage(createTextMessage(chatId, "Уведомления об обновлениях (*release*) включены"))
+        }
+    }
+
+    private fun sub_beta(chatId: Long) {
+        log.debug("sub_beta($chatId)")
+        if (db.addBetaSubscriber(chatId)) {
+            sendMessage(createTextMessage(chatId, "Уведомления об обновлениях (*beta*) включены"))
         }
     }
 
     private fun unsub(chatId: Long) {
         log.debug("unsub($chatId)")
         if (db.removeSubscriber(chatId)) {
-            sendMessage(createTextMessage(chatId, "Уведомления об обновлениях выключены"))
+            sendMessage(createTextMessage(chatId, "Все уведомления выключены"))
         } else {
             sendMessage(createTextMessage(chatId, "Вы не подписаны на уведомления"))
         }
     }
 
-    private fun checkUpdateAvailable(apk: Apk): Boolean {
-        val latest = db.readLatestVersion()
-        if (latest == null || latest.pubDate != apk.pubDate) {
-            log.debug("Update available: $apk")
-            db.saveLatestVersion(apk.title, apk.pubDate)
-            return true
+    private fun checkUpdateAvailable(release: Apk?, beta: Apk?): Pair<Boolean, Boolean> {
+        var releaseUpdateAvailable = false
+        var betaUpdateAvailable = false
+        val storedRelease = db.readLatestRelease()
+        val storedBeta = db.readLatestBeta()
+        if (release != null && (storedRelease == null || release.pubDate != storedRelease.pubDate)) {
+            log.debug("Release update available: $release")
+            db.saveLatestRelease(release)
+            releaseUpdateAvailable = true
         }
-        return false
+        if (beta != null && (storedBeta == null || beta.pubDate != storedBeta.pubDate)) {
+            log.debug("Beta update available: $beta")
+            db.saveLatestBeta(beta)
+            betaUpdateAvailable = true
+        }
+        return Pair(releaseUpdateAvailable, betaUpdateAvailable)
     }
 
-    private fun checkUpdateAvailableAndNotify(apk: Apk) {
-        if (checkUpdateAvailable(apk)) {
+    private fun checkUpdateAvailableAndNotify(release: Apk?, beta: Apk?) {
+        val result = checkUpdateAvailable(release, beta)
+        if (result.first || result.second) {
             val subs = db.readAllSubscribers()
-            if (subs != null && !subs.isEmpty()) {
-                subs.forEach { sub ->
-                    sendMessage(createTextMessage(sub.chatId, "Доступна новая версия: ${apk.title}\n" +
-                            "Дата релиза: ${RssDateUtils.toHumanReadable(apk.pubDate)}\n" +
-                            apk.link.plus("download")))
+            subs?.forEach { sub ->
+                if (sub.release && result.first) {
+                    sendMessage(createTextMessage(sub.chatId, "*Release* обновление: ${release!!.title}\n" +
+                            "Дата релиза: ${RssDateUtils.toHumanReadable(release.pubDate)}\n" +
+                            "`[`__[Скачать](${release.link.plus("download")}" + ")__`]`"))
+                } else if (sub.beta && result.second) {
+                    sendMessage(createTextMessage(sub.chatId, "*Beta* обновление: ${beta!!.title}\n" +
+                            "Дата релиза: ${RssDateUtils.toHumanReadable(beta.pubDate)}\n" +
+                            "`[`__[Скачать](${beta.link.plus("download")}" + ")__`]`"))
+                } else {
+                    sendMessage(createTextMessage(sub.chatId, "Доступны обновления: \n" +
+                            "*Release*: ${release!!.title}\n" +
+                            "Дата релиза: ${RssDateUtils.toHumanReadable(release.pubDate)}\n" +
+                            "`[`__[Скачать](${release.link.plus("download")}" + ")__`]`" +
+                            "*Beta*: ${beta!!.title}\n" +
+                            "Дата релиза: ${RssDateUtils.toHumanReadable(beta.pubDate)}\n" +
+                            "`[`__[Скачать](${beta.link.plus("download")}" + ")__`]`"))
                 }
             }
         }
@@ -132,24 +194,40 @@ class SpotifyApkBot : BaseBot() {
         val iter = apkNodeList.iterator()
         while (iter.hasNext()) {
             val itemNode = iter.next() as Node
-            apkList.add(Apk(itemNode.selectSingleNode("title").stringValue, itemNode.selectSingleNode("link")
-                    .stringValue, itemNode.selectSingleNode("pubDate").stringValue))
+            apkList.add(Apk(itemNode.selectSingleNode("title").stringValue,
+                    itemNode.selectSingleNode("pubDate").stringValue,
+                    itemNode.selectSingleNode("link").stringValue))
         }
 
         return RssFeed(lastBuildDate, apkList)
     }
 
-    private fun getLatest(apkList: List<Apk>?): Apk? {
-        if (apkList != null && apkList.isNotEmpty()) {
-            var last = apkList[0]
-            apkList.forEach { t ->
-                if (t > last) {
-                    last = t
+    private fun getLatestRelease(apkList: List<Apk>?): Apk? {
+        var release: Apk? = null
+        apkList?.forEach { t: Apk ->
+            if (!t.title!!.contains("beta")) {
+                if (release == null) {
+                    release = t
+                } else if (t > release!!) {
+                    release = t
                 }
             }
-            return last
         }
-        return null
+        return release
+    }
+
+    private fun getLatestBeta(apkList: List<Apk>?): Apk? {
+        var beta: Apk? = null
+        apkList?.forEach { t ->
+            if (t.title!!.contains("beta")) {
+                if (beta == null) {
+                    beta = t
+                } else if (t > beta!!) {
+                    beta = t
+                }
+            }
+        }
+        return beta
     }
 }
 

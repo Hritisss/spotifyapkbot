@@ -28,6 +28,7 @@ abstract class BaseBot : TelegramLongPollingBot() {
     fun createTextMessage(chatId: Long, text: String?): SendMessage {
         val message = SendMessage()
         message.enableMarkdown(true)
+        message.disableWebPagePreview()
         message.setChatId(chatId)
         message.text = text
         return message
