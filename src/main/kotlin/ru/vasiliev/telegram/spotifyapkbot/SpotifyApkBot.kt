@@ -1,10 +1,8 @@
 package ru.vasiliev.telegram.spotifyapkbot
 
-import io.reactivex.Observable
 import io.reactivex.Single
 import io.reactivex.rxkotlin.subscribeBy
 import io.reactivex.schedulers.Schedulers
-import org.apache.log4j.Logger
 import org.dom4j.Document
 import org.dom4j.Node
 import org.dom4j.io.SAXReader
@@ -26,7 +24,7 @@ class SpotifyApkBot : BaseBot() {
 
     private val api: ApkMirrorApiImpl = ApkMirrorApiImpl(NetworkUtils().getRetrofit())
 
-    private val log: Logger = Logger.getLogger(SpotifyApkBot::class.java)
+    // private val log: Logger = Logger.getLogger(SpotifyApkBot::class.java)
 
     private val db: DbUtils = DbUtils.instance
 
@@ -70,7 +68,7 @@ class SpotifyApkBot : BaseBot() {
         api.getSpotifyRssFeed().subscribeOn(Schedulers.io()).flatMap { body ->
             Single.just(SAXReader().read(body.byteStream()))
         }.flatMap { doc -> Single.just(convertXml(doc)) }.subscribeBy(onError = {
-            sendMessage(createTextMessage(chatId, it.message))
+            sendMessageSafe(createTextMessage(chatId, it.message))
         }, onSuccess = {
             val release = getLatestRelease(it.apkList)
             val beta = getLatestBeta(it.apkList)
@@ -80,16 +78,16 @@ class SpotifyApkBot : BaseBot() {
             if (release != null || storedRelease != null) {
                 val latest = release ?: storedRelease
                 log.debug("Latest release: $latest")
-                sendMessage(createTextMessage(chatId, "Последняя *release* версия: ${latest!!.title}\n" +
+                sendMessageSafe(createTextMessage(chatId, "Последняя *release* версия: ${latest!!.title}\n" +
                         "Дата релиза: ${RssDateUtils.toHumanReadable(latest.pubDate)}\n" +
                         "`[`__[Скачать](${latest.link.plus("download")}" + ")__`]`"))
             } else {
-                sendMessage(createTextMessage(chatId, "Последняя *release* версия: нет данных"))
+                sendMessageSafe(createTextMessage(chatId, "Последняя *release* версия: нет данных"))
             }
             if (beta != null || storedBeta != null) {
                 val latest = beta ?: storedBeta
                 log.debug("Latest release: $latest")
-                sendMessage(createTextMessage(chatId, "Последняя *beta* версия: ${latest!!.title}\n" +
+                sendMessageSafe(createTextMessage(chatId, "Последняя *beta* версия: ${latest!!.title}\n" +
                         "Дата релиза: ${RssDateUtils.toHumanReadable(latest.pubDate)}\n" +
                         "`[`__[Скачать](${latest.link.plus("download")}" + ")__`]`"))
             } else {
@@ -109,34 +107,34 @@ class SpotifyApkBot : BaseBot() {
             }
         }
         if (subscriber != null) {
-            sendMessage(createTextMessage(chatId, "Статус подписки:\n" +
+            sendMessageSafe(createTextMessage(chatId, "Статус подписки:\n" +
                     "*release* версии: _${subscriber!!.release}_\n" +
                     "*beta* версии: _${subscriber!!.beta}_"))
         } else {
-            sendMessage(createTextMessage(chatId, "Вы не подписаны на уведомления"))
+            sendMessageSafe(createTextMessage(chatId, "Вы не подписаны на уведомления"))
         }
     }
 
     private fun sub_release(chatId: Long) {
         log.debug("sub_release($chatId)")
         if (db.addReleaseSubscriber(chatId)) {
-            sendMessage(createTextMessage(chatId, "Уведомления об обновлениях (*release*) включены"))
+            sendMessageSafe(createTextMessage(chatId, "Уведомления об обновлениях (*release*) включены"))
         }
     }
 
     private fun sub_beta(chatId: Long) {
         log.debug("sub_beta($chatId)")
         if (db.addBetaSubscriber(chatId)) {
-            sendMessage(createTextMessage(chatId, "Уведомления об обновлениях (*beta*) включены"))
+            sendMessageSafe(createTextMessage(chatId, "Уведомления об обновлениях (*beta*) включены"))
         }
     }
 
     private fun unsub(chatId: Long) {
         log.debug("unsub($chatId)")
         if (db.removeSubscriber(chatId)) {
-            sendMessage(createTextMessage(chatId, "Все уведомления выключены"))
+            sendMessageSafe(createTextMessage(chatId, "Все уведомления выключены"))
         } else {
-            sendMessage(createTextMessage(chatId, "Вы не подписаны на уведомления"))
+            sendMessageSafe(createTextMessage(chatId, "Вы не подписаны на уведомления"))
         }
     }
 
@@ -164,15 +162,15 @@ class SpotifyApkBot : BaseBot() {
             val subs = db.readAllSubscribers()
             subs?.forEach { sub ->
                 if (sub.release && result.first) {
-                    sendMessage(createTextMessage(sub.chatId, "*Release* обновление: ${release!!.title}\n" +
+                    sendMessageSafe(createTextMessage(sub.chatId, "*Release* обновление: ${release!!.title}\n" +
                             "Дата релиза: ${RssDateUtils.toHumanReadable(release.pubDate)}\n" +
                             "`[`__[Скачать](${release.link.plus("download")}" + ")__`]`"))
                 } else if (sub.beta && result.second) {
-                    sendMessage(createTextMessage(sub.chatId, "*Beta* обновление: ${beta!!.title}\n" +
+                    sendMessageSafe(createTextMessage(sub.chatId, "*Beta* обновление: ${beta!!.title}\n" +
                             "Дата релиза: ${RssDateUtils.toHumanReadable(beta.pubDate)}\n" +
                             "`[`__[Скачать](${beta.link.plus("download")}" + ")__`]`"))
                 } else {
-                    sendMessage(createTextMessage(sub.chatId, "Доступны обновления: \n" +
+                    sendMessageSafe(createTextMessage(sub.chatId, "Доступны обновления: \n" +
                             "*Release*: ${release!!.title}\n" +
                             "Дата релиза: ${RssDateUtils.toHumanReadable(release.pubDate)}\n" +
                             "`[`__[Скачать](${release.link.plus("download")}" + ")__`]`" +
