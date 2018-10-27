@@ -24,8 +24,6 @@ class SpotifyApkBot : BaseBot() {
 
     private val api: ApkMirrorApiImpl = ApkMirrorApiImpl(NetworkUtils().getRetrofit())
 
-    // private val log: Logger = Logger.getLogger(SpotifyApkBot::class.java)
-
     private val db: DbUtils = DbUtils.instance
 
     init {
@@ -167,14 +165,6 @@ class SpotifyApkBot : BaseBot() {
                             "`[`__[Скачать](${release.link.plus("download")}" + ")__`]`"))
                 } else if (sub.beta && result.second) {
                     sendMessageSafe(createTextMessage(sub.chatId, "*Beta* обновление: ${beta!!.title}\n" +
-                            "Дата релиза: ${RssDateUtils.toHumanReadable(beta.pubDate)}\n" +
-                            "`[`__[Скачать](${beta.link.plus("download")}" + ")__`]`"))
-                } else {
-                    sendMessageSafe(createTextMessage(sub.chatId, "Доступны обновления: \n" +
-                            "*Release*: ${release!!.title}\n" +
-                            "Дата релиза: ${RssDateUtils.toHumanReadable(release.pubDate)}\n" +
-                            "`[`__[Скачать](${release.link.plus("download")}" + ")__`]`" +
-                            "*Beta*: ${beta!!.title}\n" +
                             "Дата релиза: ${RssDateUtils.toHumanReadable(beta.pubDate)}\n" +
                             "`[`__[Скачать](${beta.link.plus("download")}" + ")__`]`"))
                 }
